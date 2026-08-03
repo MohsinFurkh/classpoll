@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0d1117">
+<title>ClassPoll — projector</title>
+<link rel="stylesheet" href="/assets/app.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<div class="stage">
+
+  <header class="stage-head">
+    <div class="stage-q" id="question">Getting ready…</div>
+    <div class="joinbox">
+      <div class="qr" id="qr"></div>
+      <div>
+        <div class="url" id="joinUrl">&nbsp;</div>
+        <div class="code" id="code">····</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="stage-body">
+    <div class="waiting" id="waiting">Scan the code to join</div>
+    <div class="bars hidden" id="bars"></div>
+    <div class="cloud hidden" id="cloud"></div>
+    <div class="wall hidden" id="wall"></div>
+    <div class="center hidden" id="dots"></div>
+  </main>
+
+  <footer class="stage-foot">
+    <div><span class="counter" id="responded">0</span> answered</div>
+    <div id="phaseText">waiting</div>
+  </footer>
+
+</div>
+
+<script src="/assets/qr.js"></script>
+<script src="/assets/wordcloud.js"></script>
+<script src="/assets/display.js"></script>
+</body>
+</html>

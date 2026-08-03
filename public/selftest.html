@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ClassPoll self-test</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  body { padding: 2rem; font-family: ui-monospace, Consolas, monospace; }
+  .pass { color: #35c37d; }
+  .fail { color: #ff6b6b; font-weight: 700; }
+  pre { white-space: pre-wrap; line-height: 1.6; }
+  #qrbox { width: 260px; background: #fff; padding: 8px; border-radius: 8px; margin: 1rem 0; }
+  #cloudbox { height: 340px; border: 1px dashed #2b3542; border-radius: 12px; position: relative; }
+</style>
+</head>
+<body>
+<h1>Self-test</h1>
+<pre id="out"></pre>
+<div id="qrbox"></div>
+<h2>Word cloud</h2>
+<div id="cloudbox" class="cloud"></div>
+
+<script src="assets/qr.js"></script>
+<script src="assets/wordcloud.js"></script>
+<script>
+const out = document.getElementById('out');
+let failures = 0;
+function check(name, cond, detail) {
+  if (!cond) failures++;
+  out.innerHTML += `<span class="${cond ? 'pass' : 'fail'}">${cond ? 'PASS' : 'FAIL'}</span>  ${name}` +
+    (detail ? `  <span style="color:#93a1b3">${detail}</span>` : '') + '\n';
+}
+
+// ---------------------------------------------------------------- QR round trip
+// Decode the matrix back into text. This exercises placement, masking, format
+// info and interleaving end to end, not just "it drew something square".
+
+function reservedMap(version, size) {
+  const fn = Array.from({length: size}, () => new Array(size).fill(false));
+  const mark = (x, y) => { if (x>=0 && y>=0 && x<size && y<size) fn[y][x] = true; };
+  for (const [fx, fy] of [[0,0],[size-7,0],[0,size-7]])
+    for (let dy=-1; dy<=7; dy++) for (let dx=-1; dx<=7; dx++) mark(fx+dx, fy+dy);
+  for (let i=8; i<size-8; i++) { mark(i,6); mark(6,i); }
+  const centers = QR._tables.ALIGN[version];
+  for (const r of centers) for (const c of centers) {
+    if ((r===6&&c===6)||(r===6&&c===size-7)||(r===size-7&&c===6)) continue;
+    for (let dy=-2; dy<=2; dy++) for (let dx=-2; dx<=2; dx++) mark(c+dx, r+dy);
+  }
+  for (let i=0; i<=8; i++) { mark(8,i); mark(i,8); }
+  for (let i=0; i<8; i++) { mark(size-1-i,8); mark(8,size-1-i); }
+  if (version >= 7) for (let i=0;i<18;i++) {
+    const a = size-11+(i%3), b = Math.floor(i/3);
+    mark(a,b); mark(b,a);
+  }
+  return fn;
+}
+
+function decode(modules, size) {
+  const version = (size - 17) / 4;
+
+  // read the 15 format bits back out of the top-left copy
+  let raw = 0;
+  for (let i=0;i<=5;i++) raw |= (modules[i][8]?1:0) << i;
+  raw |= (modules[7][8]?1:0) << 6;
+  raw |= (modules[8][8]?1:0) << 7;
+  raw |= (modules[8][7]?1:0) << 8;
+  for (let i=9;i<15;i++) raw |= (modules[8][14-i]?1:0) << i;
+  const fmt = ((raw ^ 0x5412) >>> 10) & 0x1f;
+  const ecc = (fmt >> 3) === 1 ? 'L' : (fmt >> 3) === 0 ? 'M' : null;
+  const mask = fmt & 7;
+  if (!ecc) throw new Error('unreadable EC level in format info');
+
+  const maskFn = [
+    (i,j)=>(i+j)%2===0, (i)=>i%2===0, (i,j)=>j%3===0, (i,j)=>(i+j)%3===0,
+    (i,j)=>(Math.floor(i/2)+Math.floor(j/3))%2===0,
+    (i,j)=>((i*j)%2)+((i*j)%3)===0,
+    (i,j)=>(((i*j)%2)+((i*j)%3))%2===0,
+    (i,j)=>(((i+j)%2)+((i*j)%3))%2===0,
+  ][mask];
+
+  const fn = reservedMap(version, size);
+  const grid = modules.map(r => r.slice());
+  for (let y=0;y<size;y++) for (let x=0;x<size;x++)
+    if (!fn[y][x] && maskFn(y,x)) grid[y][x] = !grid[y][x];
+
+  const bits = [];
+  for (let right = size-1; right >= 1; right -= 2) {
+    if (right === 6) right = 5;
+    const upward = ((right + 1) & 2) === 0;
+    for (let v=0; v<size; v++) {
+      const y = upward ? size-1-v : v;
+      for (let k=0;k<2;k++) {
+        const x = right - k;
+        if (fn[y][x]) continue;
+        bits.push(grid[y][x] ? 1 : 0);
+      }
+    }
+  }
+
+  const words = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    let b = 0;
+    for (let k=0;k<8;k++) b = (b << 1) | bits[i+k];
+    words.push(b);
+  }
+
+  // de-interleave back into blocks and keep only the data codewords
+  const [ecLen, b1, d1, b2 = 0, d2 = 0] = QR._tables.BLOCKS[ecc][version];
+  const lens = [...Array(b1).fill(d1), ...Array(b2).fill(d2)];
+  const blocks = lens.map(() => []);
+  let p = 0;
+  for (let i=0; i<Math.max(d1,d2); i++)
+    for (let b=0; b<lens.length; b++) if (i < lens[b]) blocks[b].push(words[p++]);
+  const data = blocks.flat();
+
+  const db = [];
+  for (const byte of data) for (let i=7;i>=0;i--) db.push((byte >>> i) & 1);
+  const take = (n) => { let v = 0; for (let i=0;i<n;i++) v = (v<<1) | db.shift(); return v; };
+
+  const mode = take(4);
+  if (mode !== 0b0100) throw new Error('mode was ' + mode.toString(2) + ', expected byte mode 0100');
+  const len = take(version < 10 ? 8 : 16);
+  const bytes = new Uint8Array(len);
+  for (let i=0;i<len;i++) bytes[i] = take(8);
+  return { text: new TextDecoder().decode(bytes), version, ecc, mask };
+}
+
+const cases = [
+  'http://192.168.1.20:3000/MKPQ',
+  'http://10.0.0.7:3000/BXTZ',
+  'HELLO',
+  'https://classpoll.example.com/QRST',
+  'http://192.168.137.221:3000/WNPD?x=1',
+];
+
+for (const ecc of ['L', 'M']) {
+  for (const text of cases) {
+    try {
+      const { modules, size } = QR.matrix(text, ecc);
+      const got = decode(modules, size);
+      check(`round trip [${ecc}] ${text.slice(0, 34)}`, got.text === text,
+        `v${got.version} ${size}x${size} mask${got.mask} ec:${got.ecc}` +
+        (got.text === text ? '' : ` got "${got.text}"`));
+    } catch (e) {
+      check(`round trip [${ecc}] ${text.slice(0, 34)}`, false, e.message);
+    }
+  }
+}
+
+// -------------------------------------------------------------- structure
+{
+  const { modules, size } = QR.matrix('http://192.168.1.20:3000/MKPQ', 'M');
+  check('size is 4v+17', (size - 17) % 4 === 0, `${size}x${size}`);
+
+  const finderOK = ([fx, fy]) => {
+    for (let dy=0; dy<7; dy++) for (let dx=0; dx<7; dx++) {
+      const want = dx===0||dx===6||dy===0||dy===6||(dx>=2&&dx<=4&&dy>=2&&dy<=4);
+      if (modules[fy+dy][fx+dx] !== want) return false;
+    }
+    return true;
+  };
+  check('finder top-left',  finderOK([0,0]));
+  check('finder top-right', finderOK([size-7,0]));
+  check('finder bottom-left', finderOK([0,size-7]));
+
+  let timing = true;
+  for (let i=8;i<size-8;i++) {
+    if (modules[6][i] !== (i%2===0)) timing = false;
+    if (modules[i][6] !== (i%2===0)) timing = false;
+  }
+  check('timing patterns alternate', timing);
+  check('dark module set', modules[size-8][8] === true);
+
+  let dark = 0;
+  for (let y=0;y<size;y++) for (let x=0;x<size;x++) if (modules[y][x]) dark++;
+  const pct = (dark*100)/(size*size);
+  check('dark ratio near 50%', pct > 35 && pct < 65, pct.toFixed(1) + '%');
+
+  document.getElementById('qrbox').innerHTML =
+    QR.svg('http://192.168.1.20:3000/MKPQ', { ecc: 'M', quiet: 2 });
+}
+
+// ------------------------------------------------------------- word cloud
+{
+  const words = [
+    ['recursion',14],['sorting',9],['confusing',7],['clear',6],['pointers',5],
+    ['fast',4],['tricky',4],['loops',3],['base case',3],['stack',2],['heap',2],
+    ['memory',2],['proof',2],['induction',1],['complexity',1],['big-o',1],
+    ['arrays',1],['hashing',1],['graphs',1],['trees',1],
+  ].map(([text,count]) => ({text,count}));
+
+  const box = document.getElementById('cloudbox');
+  // Lay out only once font metrics are final, then let the transitions settle
+  // before measuring geometry.
+  document.fonts.ready.then(() => WordCloud.render(box, words));
+  setTimeout(() => {
+    const spans = [...box.querySelectorAll('span[data-word]')];
+
+    // Capture every rect BEFORE reporting anything: check() appends to the <pre>
+    // above, which reflows the page and would invalidate rects taken later.
+    const rects = spans.map(s => s.getBoundingClientRect());
+    const bb = box.getBoundingClientRect();
+
+    check('cloud renders every word', spans.length === words.length, `${spans.length}/${words.length}`);
+    check('cloud placed every word', spans.every(s => s.classList.contains('placed')),
+      `${spans.filter(s=>s.classList.contains('placed')).length} placed`);
+
+    let overlap = 0;
+    for (let i=0;i<rects.length;i++) for (let j=i+1;j<rects.length;j++) {
+      const a=rects[i], b=rects[j];
+      if (!(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom)) overlap++;
+    }
+    check('no overlapping words', overlap === 0, `${overlap} collisions`);
+
+    const strays = spans.filter((s, i) => {
+      const r = rects[i];
+      return !(r.left >= bb.left-1 && r.right <= bb.right+1 &&
+               r.top >= bb.top-1 && r.bottom <= bb.bottom+1);
+    }).map((s) => `${s.dataset.word}@${s.style.fontSize}`);
+    check('cloud stays inside its box', strays.length === 0, strays.join(', '));
+
+    out.innerHTML += `\n${failures === 0
+      ? '<span class="pass">ALL CHECKS PASSED</span>'
+      : `<span class="fail">${failures} CHECK(S) FAILED</span>`}\n`;
+    document.title = failures === 0 ? 'SELFTEST OK' : `SELFTEST ${failures} FAILED`;
+  }, 1600);
+}
+</script>
+</body>
+</html>

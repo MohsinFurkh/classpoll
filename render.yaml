@@ -1,0 +1,14 @@
+# Render blueprint. With this file in the repo root, Render configures the
+# service automatically instead of asking you to fill in the build/start fields.
+#
+# Keep numInstances at 1: poll state lives in memory, so a second instance
+# would serve students a room the first instance has never heard of.
+services:
+  - type: web
+    name: classpoll
+    runtime: node
+    plan: free
+    numInstances: 1
+    buildCommand: ""
+    startCommand: node server.js
+    healthCheckPath: /

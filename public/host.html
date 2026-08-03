@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0d1117">
+<title>ClassPoll — teacher console</title>
+<link rel="stylesheet" href="/assets/app.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<main class="host-wrap">
+
+  <div class="topbar">
+    <div>
+      <div class="muted" style="font-size:.75rem;letter-spacing:.14em;text-transform:uppercase">Room code</div>
+      <div class="code-badge" id="codeBadge">····</div>
+    </div>
+    <div class="row">
+      <span class="pill" id="phasePill">lobby</span>
+      <a class="btn" id="displayLink" target="_blank" rel="noopener">Open projector view ↗</a>
+      <button class="ghost" id="newSession">New room</button>
+    </div>
+  </div>
+
+  <div class="host-grid">
+
+    <!-- ------------------------------------------------ question builder -->
+    <section class="panel">
+      <h2 style="font-size:1.1rem">Question</h2>
+
+      <div class="field">
+        <label for="type">Answer type</label>
+        <select id="type">
+          <option value="choice">Multiple choice — bar chart</option>
+          <option value="word">Single word — word cloud</option>
+          <option value="text">Short sentence — answer wall</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="question">Ask the class</label>
+        <textarea id="question" rows="2" maxlength="300"
+                  placeholder="Which sorting algorithm is O(n log n) in the worst case?"></textarea>
+      </div>
+
+      <div id="optionsBlock" class="field">
+        <label>Options <span class="muted" style="font-weight:400">— mark the correct one if there is one</span></label>
+        <div id="optionRows"></div>
+        <button class="ghost" id="addOption" style="padding:.45rem .8rem;font-size:.85rem">+ Add option</button>
+      </div>
+
+      <div class="field row" style="gap:.5rem">
+        <input type="checkbox" id="liveResults" style="width:auto">
+        <label for="liveResults" style="margin:0">Show results while voting is open</label>
+      </div>
+      <p class="muted" style="font-size:.8rem;margin-top:-.5rem" id="liveHint"></p>
+
+      <div class="row">
+        <button class="primary" id="startBtn">Set question &amp; open voting</button>
+        <button id="setOnly">Set without opening</button>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------- control -->
+    <section style="display:grid;gap:1.2rem">
+
+      <div class="panel">
+        <h2 style="font-size:1.1rem">Live</h2>
+        <div class="row" style="justify-content:space-between;align-items:flex-end">
+          <div>
+            <div style="font-size:2.4rem;font-weight:800" id="respondedCount">0</div>
+            <div class="muted" style="font-size:.85rem">answers in</div>
+          </div>
+          <div class="center">
+            <div style="font-size:1.6rem;font-weight:700" id="joinedCount">0</div>
+            <div class="muted" style="font-size:.85rem">phones joined</div>
+          </div>
+        </div>
+        <div class="mini-bar" style="margin-top:.9rem"><span id="respondedBar"></span></div>
+
+        <div class="row" style="margin-top:1.1rem">
+          <button class="primary" id="openBtn">Open voting</button>
+          <button id="closeBtn">Close &amp; reveal</button>
+          <button class="danger" id="clearBtn">Clear answers</button>
+        </div>
+      </div>
+
+      <div class="panel" id="previewPanel">
+        <h2 style="font-size:1.1rem">Results preview</h2>
+        <div id="preview" class="muted">No answers yet.</div>
+      </div>
+
+      <div class="panel hidden" id="modPanel">
+        <h2 style="font-size:1.1rem">Moderation</h2>
+        <p class="muted" style="font-size:.85rem">Hide anything you do not want on the projector. Takes effect immediately.</p>
+        <div class="mod-list" id="modList"></div>
+      </div>
+
+    </section>
+  </div>
+
+  <p class="muted center" style="margin-top:2rem;font-size:.85rem">
+    Students join at <strong id="joinUrl"></strong>
+  </p>
+</main>
+
+<script src="/assets/host.js"></script>
+</body>
+</html>
