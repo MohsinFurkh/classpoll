@@ -35,6 +35,18 @@ projector view** and drag that window to the projector, ideally fullscreen (F11)
 Keep the host window on the laptop screen: it holds the answer key and the
 controls, and neither belongs in front of the class.
 
+### Choosing your own room code
+
+`/host?code=MTBN` claims that specific code instead of being handed a random
+one. Use it whenever the code is printed somewhere ahead of time — on a slide,
+in a handout, on the whiteboard. Rooms live in memory, so without this the code
+changes every time the server restarts and anything printed in advance goes
+stale. Any four letters A–Z work.
+
+If someone already has that room open you get a clear "already in use" message
+rather than silently taking over a live lecture. Reloading your own console
+reclaims it.
+
 ## Question types
 
 **Multiple choice** — 2 to 6 options, optional correct answer. Results are a bar

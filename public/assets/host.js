@@ -11,9 +11,33 @@ let correct = null;   // index of the correct option, or null
 
 // ---- session bootstrap -------------------------------------------------------
 
-async function newSession() {
-  const res = await fetch('/api/session', { method: 'POST' });
-  session = await res.json();
+// /host?code=MTBN claims a fixed room, so a code printed on a lecture slide
+// keeps working after the server restarts.
+const wantedCode = (new URLSearchParams(location.search).get('code') || '')
+  .toUpperCase()
+  .replace(/[^A-Z]/g, '');
+
+async function newSession(code, token) {
+  const res = await fetch('/api/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(code ? { code, token } : {}),
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    if (res.status === 409) {
+      alert(
+        `Room ${code} is already open in another browser or tab.\n\n` +
+          `Close it, or remove ?code=${code} from this URL to get a fresh code.`
+      );
+      return;
+    }
+    alert(data.error || 'Could not start a room');
+    return;
+  }
+
+  session = data;
   localStorage.setItem(STORE, JSON.stringify(session));
   attach();
 }
@@ -24,6 +48,13 @@ async function boot() {
   } catch {
     session = null;
   }
+
+  if (wantedCode) {
+    // Reuse the stored token if it belongs to this room, so a reload reclaims it.
+    const token = session && session.code === wantedCode ? session.hostToken : undefined;
+    return newSession(wantedCode, token);
+  }
+
   if (!session || !session.code) return newSession();
 
   // The server restarts with empty memory; make sure the room still exists.
@@ -280,7 +311,10 @@ $('clearBtn').addEventListener('click', () => {
   if (confirm('Delete every answer for this question?')) command('clear');
 });
 $('newSession').addEventListener('click', () => {
-  if (confirm('Start a new room with a new code? Students will need to rejoin.')) newSession();
+  if (!confirm('Start a new room with a new code? Students will need to rejoin.')) return;
+  // Drop any ?code= so this really does hand out a fresh code.
+  if (wantedCode) location.href = '/host';
+  else newSession();
 });
 
 boot();

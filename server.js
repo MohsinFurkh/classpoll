@@ -39,9 +39,14 @@ function newCode() {
   }
 }
 
-function createSession() {
+/**
+ * `wanted` lets a teacher claim a fixed code (e.g. one printed on a lecture
+ * slide). Without it the room code changes every time the server restarts,
+ * which on a sleeping free tier means the QR in a deck goes stale overnight.
+ */
+function createSession(wanted) {
   const s = {
-    code: newCode(),
+    code: wanted || newCode(),
     hostToken: crypto.randomBytes(16).toString('hex'),
     phase: 'lobby',              // lobby | open | closed
     poll: {
@@ -327,7 +332,29 @@ function stream(req, res, url) {
 }
 
 async function apiSession(req, res) {
-  const s = createSession();
+  const body = await readBody(req);
+  const wanted = String(body.code || '').toUpperCase();
+
+  if (!wanted) {
+    const s = createSession();
+    return sendJSON(res, 200, { code: s.code, hostToken: s.hostToken });
+  }
+
+  if (!/^[A-Z]{4}$/.test(wanted)) {
+    return sendJSON(res, 400, { error: 'a room code is four letters, A-Z' });
+  }
+
+  const existing = sessions.get(wanted);
+  if (existing) {
+    // The same teacher reloading their console gets the room back; anyone else
+    // is told it is taken rather than silently hijacking a live lecture.
+    if (body.token && body.token === existing.hostToken) {
+      return sendJSON(res, 200, { code: existing.code, hostToken: existing.hostToken });
+    }
+    return sendJSON(res, 409, { error: `room ${wanted} is already in use` });
+  }
+
+  const s = createSession(wanted);
   sendJSON(res, 200, { code: s.code, hostToken: s.hostToken });
 }
 
