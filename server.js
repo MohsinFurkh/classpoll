@@ -15,6 +15,7 @@ const crypto = require('crypto');
 
 const PORT = Number(process.env.PORT || process.argv[2] || 3000);
 const PUBLIC = path.join(__dirname, 'public');
+const DECKS = path.join(PUBLIC, 'decks');
 
 const CODE_ALPHABET = 'BCDFGHJKLMNPQRSTVWXZ'; // no vowels -> never spells a word
 const CODE_LEN = 4;
@@ -22,6 +23,16 @@ const BROADCAST_MS = 250;        // coalesce tally broadcasts
 const KEEPALIVE_MS = 20000;      // defeat idle-proxy timeouts
 const MAX_BODY = 8 * 1024;
 const MAX_TEXT = 140;
+const PART_LIMIT = 8;            // sub-questions in one multi-part poll
+
+/**
+ * Optional shared secret for the teacher console.
+ *
+ * On a laptop on the classroom wifi this is unnecessary and stays unset. On a
+ * public URL it matters: students have the address, /host holds the answer key,
+ * and a room whose server has just restarted is unclaimed and up for grabs.
+ */
+const HOST_KEY = String(process.env.HOST_KEY || '');
 const SESSION_TTL_MS = 6 * 60 * 60 * 1000;
 
 /** @type {Map<string, Session>} */
@@ -50,14 +61,22 @@ function createSession(wanted) {
     hostToken: crypto.randomBytes(16).toString('hex'),
     phase: 'lobby',              // lobby | open | closed
     poll: {
-      type: 'choice',            // choice | word | text
+      type: 'choice',            // choice | word | text | multi
       question: '',
       options: [],
+      // Only for type 'multi': the sub-questions, each answered on the same
+      // screen and submitted together. See PART_LIMIT.
+      parts: [],
       correct: null,
       liveResults: false,
     },
-    responses: new Map(),        // voterId -> { choice, text, at }
-    hidden: new Set(),           // voterId of moderated-out responses
+    // voterId -> { choice, text, at } for a single-part poll,
+    //            { answers: [...], at } for a multi-part one.
+    responses: new Map(),
+    // 'voterId' for a single-part poll, 'voterId#partIndex' for a multi-part
+    // one, because hiding one clumsy sentence should not delete a student's
+    // other five answers.
+    hidden: new Set(),
     joined: new Set(),           // voterId
     clients: new Set(),          // { res, role, voterId }
     touched: Date.now(),
@@ -76,7 +95,38 @@ function normalizeWord(raw) {
     .trim();
 }
 
+/**
+ * A multi-part poll is tallied one part at a time, so each sub-question gets
+ * the same shape of result a standalone poll would have. The projector can then
+ * reuse its existing renderers per part instead of learning a new format.
+ */
+function tallyMulti(s) {
+  const all = [...s.responses.entries()];
+
+  const parts = s.poll.parts.map((part, i) => {
+    if (part.type === 'choice') {
+      const counts = part.options.map(() => 0);
+      for (const [id, r] of all) {
+        if (s.hidden.has(`${id}#${i}`)) continue;
+        const a = r.answers && r.answers[i];
+        if (Number.isInteger(a) && a >= 0 && a < counts.length) counts[a]++;
+      }
+      return { kind: 'choice', counts };
+    }
+
+    const texts = all
+      .filter(([id, r]) => !s.hidden.has(`${id}#${i}`) && typeof (r.answers || [])[i] === 'string')
+      .sort((a, b) => b[1].at - a[1].at)
+      .map(([id, r]) => ({ id: `${id}#${i}`, text: r.answers[i] }));
+    return { kind: 'text', texts };
+  });
+
+  return { kind: 'multi', parts };
+}
+
 function tally(s) {
+  if (s.poll.type === 'multi') return tallyMulti(s);
+
   const live = [...s.responses.entries()].filter(([id]) => !s.hidden.has(id));
 
   if (s.poll.type === 'choice') {
@@ -122,6 +172,8 @@ function snapshot(s, role) {
   const showResults =
     isHost || s.phase === 'closed' || (s.phase === 'open' && s.poll.liveResults);
 
+  const revealKey = isHost || s.phase === 'closed';
+
   const out = {
     code: s.code,
     phase: s.phase,
@@ -131,16 +183,44 @@ function snapshot(s, role) {
     liveResults: s.poll.liveResults,
     stats: { joined: s.joined.size, responded: s.responses.size },
     results: showResults ? tally(s) : null,
-    correct: isHost || s.phase === 'closed' ? s.poll.correct : null,
+    correct: revealKey ? s.poll.correct : null,
   };
 
-  if (isHost) {
-    out.moderation = [...s.responses.entries()]
-      .filter(([, r]) => typeof r.text === 'string')
-      .sort((a, b) => b[1].at - a[1].at)
-      .map(([id, r]) => ({ id, text: r.text, hidden: s.hidden.has(id) }));
+  if (s.poll.type === 'multi') {
+    out.parts = s.poll.parts.map((p) => ({
+      label: p.label,
+      prompt: p.prompt,
+      type: p.type,
+      options: p.options,
+      correct: revealKey ? p.correct : null,
+    }));
   }
+
+  if (isHost) out.moderation = moderationList(s);
   return out;
+}
+
+/** Everything free-text the teacher might want off the projector, newest first. */
+function moderationList(s) {
+  const rows = [];
+
+  if (s.poll.type === 'multi') {
+    for (const [id, r] of s.responses) {
+      s.poll.parts.forEach((part, i) => {
+        const a = (r.answers || [])[i];
+        if (part.type === 'choice' || typeof a !== 'string') return;
+        const key = `${id}#${i}`;
+        rows.push({ id: key, text: `${part.label || i + 1} · ${a}`, at: r.at, hidden: s.hidden.has(key) });
+      });
+    }
+  } else {
+    for (const [id, r] of s.responses) {
+      if (typeof r.text !== 'string') continue;
+      rows.push({ id, text: r.text, at: r.at, hidden: s.hidden.has(id) });
+    }
+  }
+
+  return rows.sort((a, b) => b.at - a.at).map(({ at, ...row }) => row);
 }
 
 function send(client, event, data) {
@@ -168,6 +248,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
 };
@@ -221,7 +302,7 @@ const server = http.createServer(async (req, res) => {
   const p = url.pathname;
 
   try {
-    if (p.startsWith('/assets/')) {
+    if (p.startsWith('/assets/') || p.startsWith('/decks/')) {
       const safe = path
         .normalize(p)
         .replace(/^(\.\.[/\\])+/, '')
@@ -235,7 +316,10 @@ const server = http.createServer(async (req, res) => {
     // Returning the promise unawaited would make it an unhandled rejection,
     // which takes the whole process down on modern Node.
     if (p === '/api/stream') return stream(req, res, url);
-    if (p === '/api/join') return sendJSON(res, 200, { base: joinBase(req) });
+    if (p === '/api/join') {
+      return sendJSON(res, 200, { base: joinBase(req), needsKey: !!HOST_KEY });
+    }
+    if (p === '/api/decks') return apiDecks(res);
     if (p === '/api/session' && req.method === 'POST') return await apiSession(req, res);
     if (p === '/api/host' && req.method === 'POST') return await apiHost(req, res);
     if (p === '/api/vote' && req.method === 'POST') return await apiVote(req, res);
@@ -281,6 +365,41 @@ function joinBase(req) {
   return lan ? `http://${lan}:${PORT}` : `http://${host}`;
 }
 
+/**
+ * Lists the decks in public/decks so the host page can offer them in a dropdown.
+ *
+ * There is deliberately no index file to maintain: drop a .json in the folder
+ * and it appears. Titles come from inside each file so the dropdown reads
+ * "Unit I · L01" rather than a filename, and a deck that fails to parse is
+ * skipped rather than being allowed to hide the working ones two minutes
+ * before a lecture. The files are small and this runs once per host page load,
+ * so reading them synchronously costs nothing worth avoiding.
+ */
+function apiDecks(res) {
+  let names;
+  try {
+    names = fs.readdirSync(DECKS).filter((n) => n.endsWith('.json')).sort();
+  } catch {
+    return sendJSON(res, 200, { decks: [] });   // no decks folder at all is fine
+  }
+
+  const decks = [];
+  for (const name of names) {
+    try {
+      const deck = JSON.parse(fs.readFileSync(path.join(DECKS, name), 'utf8'));
+      const questions = Array.isArray(deck.questions) ? deck.questions : [];
+      decks.push({
+        file: name,
+        title: String(deck.title || name.replace(/\.json$/, '')),
+        count: questions.length,
+      });
+    } catch {
+      /* malformed deck: skip it, keep the rest usable */
+    }
+  }
+  sendJSON(res, 200, { decks });
+}
+
 function stream(req, res, url) {
   const s = sessions.get((url.searchParams.get('code') || '').toUpperCase());
   if (!s) return sendJSON(res, 404, { error: 'no such session' });
@@ -308,7 +427,9 @@ function stream(req, res, url) {
     const mine = s.responses.get(voterId);
     send(client, 'you', {
       voterId,
-      mine: mine ? { choice: mine.choice ?? null, text: mine.text ?? null } : null,
+      mine: mine
+        ? { choice: mine.choice ?? null, text: mine.text ?? null, answers: mine.answers ?? null }
+        : null,
     });
   }
 
@@ -331,9 +452,19 @@ function stream(req, res, url) {
   });
 }
 
+/** Timing-safe compare, so the key cannot be guessed a character at a time. */
+function keyOk(given) {
+  if (!HOST_KEY) return true;
+  const a = Buffer.from(String(given || ''));
+  const b = Buffer.from(HOST_KEY);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 async function apiSession(req, res) {
   const body = await readBody(req);
   const wanted = String(body.code || '').toUpperCase();
+
+  if (!keyOk(body.key)) return sendJSON(res, 401, { error: 'wrong or missing host key' });
 
   if (!wanted) {
     const s = createSession();
@@ -369,17 +500,29 @@ async function apiHost(req, res) {
     case 'ping':
       return sendJSON(res, 200, snapshot(s, 'host'));
     case 'setPoll': {
-      const type = ['choice', 'word', 'text'].includes(body.type) ? body.type : 'choice';
+      const type = ['choice', 'word', 'text', 'multi'].includes(body.type) ? body.type : 'choice';
       const options = Array.isArray(body.options)
         ? body.options.map((o) => String(o).slice(0, 80).trim()).filter(Boolean).slice(0, 6)
         : [];
       if (type === 'choice' && options.length < 2) {
         return sendJSON(res, 400, { error: 'need at least 2 options' });
       }
+
+      let parts = [];
+      if (type === 'multi') {
+        parts = cleanParts(body.parts);
+        if (!parts.length) return sendJSON(res, 400, { error: 'need at least one part' });
+        const thin = parts.findIndex((p) => p.type === 'choice' && p.options.length < 2);
+        if (thin >= 0) {
+          return sendJSON(res, 400, { error: `part ${thin + 1} needs at least 2 options` });
+        }
+      }
+
       s.poll = {
         type,
         question: String(body.question || '').slice(0, 300).trim(),
         options,
+        parts,
         correct:
           type === 'choice' && Number.isInteger(body.correct) &&
           body.correct >= 0 && body.correct < options.length
@@ -421,6 +564,61 @@ async function apiHost(req, res) {
   sendJSON(res, 200, snapshot(s, 'host'));
 }
 
+/**
+ * Sanitise the parts of a multi-part poll. Deck files are hand-written, so this
+ * assumes nothing: anything missing or malformed is dropped rather than trusted.
+ */
+function cleanParts(raw) {
+  if (!Array.isArray(raw)) return [];
+
+  return raw.slice(0, PART_LIMIT).map((p, i) => {
+    const type = p && p.type === 'text' ? 'text' : 'choice';
+    const options =
+      type === 'choice' && Array.isArray(p.options)
+        ? p.options.map((o) => String(o).slice(0, 80).trim()).filter(Boolean).slice(0, 6)
+        : [];
+    return {
+      label: String((p && p.label) || i + 1).slice(0, 24).trim(),
+      prompt: String((p && p.prompt) || '').slice(0, 300).trim(),
+      type,
+      options,
+      correct:
+        type === 'choice' && Number.isInteger(p.correct) &&
+        p.correct >= 0 && p.correct < options.length
+          ? p.correct
+          : null,
+    };
+  });
+}
+
+/**
+ * One student's answers to a multi-part poll.
+ *
+ * Partial submissions are deliberately accepted - a student stuck on part 3
+ * should still be counted on the other five, and the alternative is a Send
+ * button that stays dead for the slowest person in the room. Each send carries
+ * the full set, so re-sending to fill a gap overwrites cleanly.
+ */
+function readMultiAnswers(s, body) {
+  const given = Array.isArray(body.answers) ? body.answers : [];
+
+  const answers = s.poll.parts.map((part, i) => {
+    const a = given[i];
+    // A skipped part arrives as null, and Number(null) is 0 - which would
+    // silently record every blank as a vote for option A.
+    if (a === null || a === undefined || a === '') return null;
+
+    if (part.type === 'choice') {
+      const n = Number(a);
+      return Number.isInteger(n) && n >= 0 && n < part.options.length ? n : null;
+    }
+    const text = String(a == null ? '' : a).replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT);
+    return text || null;
+  });
+
+  return answers.some((a) => a !== null) ? answers : null;
+}
+
 async function apiVote(req, res) {
   const body = await readBody(req);
   const s = sessions.get(String(body.code || '').toUpperCase());
@@ -434,7 +632,11 @@ async function apiVote(req, res) {
   s.touched = Date.now();
 
   let entry;
-  if (s.poll.type === 'choice') {
+  if (s.poll.type === 'multi') {
+    const answers = readMultiAnswers(s, body);
+    if (!answers) return sendJSON(res, 400, { error: 'answer at least one part' });
+    entry = { answers, at: Date.now() };
+  } else if (s.poll.type === 'choice') {
     const choice = Number(body.choice);
     if (!Number.isInteger(choice) || choice < 0 || choice >= s.poll.options.length) {
       return sendJSON(res, 400, { error: 'bad choice' });
@@ -452,7 +654,14 @@ async function apiVote(req, res) {
   // Keyed by voter, so a double-tap or refresh overwrites instead of double-counting.
   s.responses.set(voterId, entry);
   broadcast(s);
-  sendJSON(res, 200, { ok: true, mine: { choice: entry.choice ?? null, text: entry.text ?? null } });
+  sendJSON(res, 200, {
+    ok: true,
+    mine: {
+      choice: entry.choice ?? null,
+      text: entry.text ?? null,
+      answers: entry.answers ?? null,
+    },
+  });
 }
 
 // ----------------------------------------------------------------- upkeep

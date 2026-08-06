@@ -23,6 +23,26 @@
     </div>
   </div>
 
+  <!-- ------------------------------------------------------------- deck -->
+  <section class="panel hidden" id="deckPanel" style="margin-bottom:1.2rem">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h2 style="font-size:1.1rem;margin:0">Deck</h2>
+      <span class="muted" style="font-size:.85rem" id="deckPos"></span>
+    </div>
+
+    <div class="field" style="margin:.8rem 0 .6rem">
+      <select id="deckPick"></select>
+    </div>
+
+    <div class="deck-list" id="deckList"></div>
+
+    <div class="row" style="margin-top:.9rem">
+      <button id="deckPrev">← Previous</button>
+      <button id="deckNext">Next →</button>
+      <span class="muted" style="font-size:.8rem" id="deckHint"></span>
+    </div>
+  </section>
+
   <div class="host-grid">
 
     <!-- ------------------------------------------------ question builder -->
@@ -35,6 +55,7 @@
           <option value="choice">Multiple choice — bar chart</option>
           <option value="word">Single word — word cloud</option>
           <option value="text">Short sentence — answer wall</option>
+          <option value="multi">Multi-part — several answers at once</option>
         </select>
       </div>
 
@@ -48,6 +69,12 @@
         <label>Options <span class="muted" style="font-weight:400">— mark the correct one if there is one</span></label>
         <div id="optionRows"></div>
         <button class="ghost" id="addOption" style="padding:.45rem .8rem;font-size:.85rem">+ Add option</button>
+      </div>
+
+      <div id="multiBlock" class="field hidden">
+        <label>Parts <span class="muted" style="font-weight:400">— the answer key, on this screen only</span></label>
+        <div id="multiParts"></div>
+        <p class="muted" style="font-size:.8rem;margin:.5rem 0 0" id="multiNote"></p>
       </div>
 
       <div class="field row" style="gap:.5rem">

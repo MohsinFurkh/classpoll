@@ -158,6 +158,46 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: 0 0 .35r
 }
 .option.chosen .key { background: var(--accent); color: #06121f; border-color: var(--accent); }
 
+/* Multi-part sheet: six labels or four sentences on one screen. The whole thing
+   has to stay thumb-reachable, so parts are compact and the Send bar sticks to
+   the bottom rather than making the student scroll back down to find it. */
+.part {
+  padding: .9rem;
+  margin-bottom: .8rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.part-head { display: flex; gap: .6rem; align-items: baseline; margin-bottom: .7rem; line-height: 1.35; }
+.part-tag {
+  flex: 0 0 auto;
+  min-width: 1.6rem;
+  padding: .1rem .4rem;
+  text-align: center;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: .78rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+.part-options { display: flex; flex-wrap: wrap; gap: .5rem; }
+.part-option { flex: 1 1 6rem; min-height: 2.9rem; padding: .6rem .7rem; font-size: .95rem; }
+.part-option.chosen { border-color: var(--accent); background: rgba(79, 156, 255, .16); color: var(--ink); }
+.part-option.is-correct { border-color: var(--good); color: var(--good); }
+.part input { font-size: 1rem; }
+
+.multi-send {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: .8rem;
+  align-items: center;
+  padding: .8rem 0;
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+.multi-send .muted { font-size: .85rem; white-space: nowrap; }
+
 .confirm {
   margin-top: 1.4rem;
   padding: 1rem;
@@ -210,6 +250,41 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: 0 0 .35r
   white-space: nowrap;
 }
 .opt-row .mark.is-correct { border-color: var(--good); color: var(--good); }
+
+/* The deck list is the running order of a lecture, so it stays scannable at a
+   glance from the laptop: one row per question, the loaded one lit up. */
+.deck-list { max-height: 15rem; overflow-y: auto; display: grid; gap: .35rem; }
+.deck-row {
+  display: flex;
+  gap: .6rem;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  padding: .5rem .7rem;
+  font-size: .88rem;
+  font-weight: 400;
+  background: var(--panel-2);
+}
+.deck-row .slot { flex: 0 0 auto; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.deck-row .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-row.is-current { border-color: var(--accent); color: var(--accent); }
+.deck-row.is-current .slot { color: var(--accent); }
+.deck-row.is-done { opacity: .5; }
+
+.part-summary {
+  display: flex;
+  gap: .6rem;
+  align-items: baseline;
+  padding: .4rem .6rem;
+  margin-bottom: .3rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: .85rem;
+}
+.part-summary .slot { flex: 0 0 auto; font-size: .72rem; font-weight: 800; color: var(--muted); }
+.part-summary .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.part-summary .key { flex: 0 0 auto; font-size: .75rem; font-weight: 700; color: var(--muted); }
 
 .mini-bar { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
 .mini-bar > span { display: block; height: 100%; background: var(--accent); transition: width .3s; }
@@ -316,6 +391,61 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: 0 0 .35r
 }
 .bar-row.is-correct .bar-label::after { content: " ✓"; color: var(--good); }
 .bar-row.dim { opacity: .45; }
+
+/* Multi-part grid. Type scales down with the number of cells rather than being
+   fixed, because six sub-questions and two are very different amounts of screen
+   to fill. Everything is clamped so it never disappears on a small projector. */
+.grid { display: grid; gap: 1.6vh 1.4vw; align-content: center; min-height: 0; }
+.cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 1.4vh 1vw;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.cell-head { display: flex; gap: .6vw; align-items: baseline; margin-bottom: 1vh; min-width: 0; }
+.cell-tag {
+  flex: 0 0 auto;
+  font-size: clamp(.8rem, 1.2vw, 1.4rem);
+  font-weight: 800;
+  color: var(--accent);
+}
+.cell-prompt {
+  font-size: clamp(.8rem, 1.15vw, 1.35rem);
+  font-weight: 600;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cell-body { display: grid; gap: .7vh; align-content: start; min-height: 0; overflow: hidden; }
+
+.cell-row { display: grid; grid-template-columns: auto 1fr auto; gap: .7vw; align-items: center; }
+.cell-label {
+  font-size: clamp(.7rem, 1vw, 1.2rem);
+  font-weight: 700;
+  max-width: 10vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell-track { height: clamp(1rem, 2.4vh, 2rem); background: var(--panel-2); border-radius: 6px; overflow: hidden; }
+.cell-fill { height: 100%; width: 0; border-radius: 6px; transition: width .45s cubic-bezier(.22, 1, .36, 1); }
+.cell-count { font-size: clamp(.7rem, 1vw, 1.2rem); font-weight: 800; min-width: 2.5ch; text-align: right; }
+.cell-row.is-correct .cell-label::after { content: " ✓"; color: var(--good); }
+.cell-row.dim { opacity: .4; }
+
+.cell-card {
+  padding: .5vh .7vw;
+  background: var(--panel-2);
+  border-left: 4px solid var(--line);
+  border-radius: 8px;
+  font-size: clamp(.7rem, 1vw, 1.2rem);
+  line-height: 1.3;
+}
 
 /* Word cloud */
 .cloud { position: relative; width: 100%; height: 100%; min-height: 40vh; }

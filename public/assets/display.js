@@ -24,7 +24,7 @@ fetch('/api/join')
   });
 
 function show(id) {
-  for (const k of ['waiting', 'bars', 'cloud', 'wall', 'dots']) {
+  for (const k of ['waiting', 'bars', 'cloud', 'wall', 'dots', 'grid']) {
     $(k).classList.toggle('hidden', k !== id);
   }
 }
@@ -162,6 +162,142 @@ function renderWall(r) {
   show('wall');
 }
 
+// ---- multi-part grid ---------------------------------------------------------
+//
+// Every part of the poll is on screen at once, because the point of grouping
+// six items into one poll is seeing the pattern across them - which item split
+// the room, which one everybody agreed on. Splitting them back up on the
+// projector would throw that away.
+
+function gridColumns(n) {
+  return n <= 2 ? n : n <= 4 ? 2 : 3;
+}
+
+function buildCell(part, i) {
+  const cell = document.createElement('section');
+  cell.className = 'cell';
+
+  const head = document.createElement('div');
+  head.className = 'cell-head';
+  const tag = document.createElement('span');
+  tag.className = 'cell-tag';
+  tag.textContent = part.label || String(i + 1);
+  const prompt = document.createElement('span');
+  prompt.className = 'cell-prompt';
+  prompt.textContent = part.prompt;
+  head.append(tag, prompt);
+
+  const body = document.createElement('div');
+  body.className = 'cell-body';
+
+  cell.append(head, body);
+  return cell;
+}
+
+function paintChoiceCell(body, part, res, revealed) {
+  const total = res.counts.reduce((a, b) => a + b, 0) || 1;
+
+  if (body.children.length !== part.options.length) {
+    body.innerHTML = '';
+    part.options.forEach((opt, j) => {
+      const row = document.createElement('div');
+      row.className = 'cell-row';
+      const label = document.createElement('span');
+      label.className = 'cell-label';
+      label.textContent = `${LETTERS[j]}. ${opt}`;
+      const track = document.createElement('div');
+      track.className = 'cell-track';
+      const fill = document.createElement('div');
+      fill.className = 'cell-fill';
+      fill.style.background = `var(${HUES[j % HUES.length]})`;
+      track.appendChild(fill);
+      const count = document.createElement('span');
+      count.className = 'cell-count';
+      row.append(label, track, count);
+      body.appendChild(row);
+    });
+  }
+
+  [...body.children].forEach((row, j) => {
+    const pct = Math.round((res.counts[j] / total) * 100);
+    row.querySelector('.cell-fill').style.width = Math.max(pct, res.counts[j] ? 5 : 0) + '%';
+    row.querySelector('.cell-count').textContent = res.counts[j] || '';
+    const hit = revealed && part.correct === j;
+    row.classList.toggle('is-correct', hit);
+    row.classList.toggle('dim', revealed && part.correct !== null && !hit);
+  });
+}
+
+function paintTextCell(body, res) {
+  const items = res.texts.slice(0, 12);
+  const want = new Map(items.map((t) => [t.id, t]));
+
+  for (const card of [...body.children]) {
+    if (!card.classList.contains('more') && !want.has(card.dataset.id)) card.remove();
+  }
+
+  const present = new Set([...body.children].map((c) => c.dataset.id));
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (present.has(items[i].id)) continue;
+    const card = document.createElement('div');
+    card.className = 'cell-card';
+    card.dataset.id = items[i].id;
+    card.style.borderLeftColor = `var(${hueFor(items[i].id)})`;
+    card.textContent = items[i].text;
+    body.prepend(card);
+  }
+
+  for (const card of body.children) {
+    const t = want.get(card.dataset.id);
+    if (t && card.textContent !== t.text) card.textContent = t.text;
+  }
+
+  const overflow = res.texts.length - items.length;
+  let more = body.querySelector('.more');
+  if (overflow > 0) {
+    if (!more) {
+      more = document.createElement('div');
+      more.className = 'cell-card more muted';
+      body.appendChild(more);
+    }
+    more.textContent = `+ ${overflow} more`;
+    body.appendChild(more);
+  } else if (more) {
+    more.remove();
+  }
+
+  if (!body.children.length) {
+    const empty = document.createElement('div');
+    empty.className = 'cell-card muted';
+    empty.textContent = 'waiting…';
+    body.appendChild(empty);
+  }
+}
+
+function renderGrid(r) {
+  const box = $('grid');
+  const parts = state.parts || [];
+  const revealed = state.phase === 'closed';
+
+  const sig = parts.map((p) => `${p.label}:${p.type}`).join('§');
+  if (box.dataset.signature !== sig) {
+    box.dataset.signature = sig;
+    box.innerHTML = '';
+    parts.forEach((p, i) => box.appendChild(buildCell(p, i)));
+    box.style.gridTemplateColumns = `repeat(${gridColumns(parts.length)}, minmax(0, 1fr))`;
+  }
+
+  parts.forEach((part, i) => {
+    const body = box.children[i].querySelector('.cell-body');
+    const res = r.parts[i];
+    if (!res) return;
+    if (res.kind === 'choice') paintChoiceCell(body, part, res, revealed);
+    else paintTextCell(body, res);
+  });
+
+  show('grid');
+}
+
 // ---- main --------------------------------------------------------------------
 
 function render() {
@@ -182,11 +318,12 @@ function render() {
 
   if (!r) {
     // Voting is open but the teacher chose to keep the tally hidden.
-    return state.type === 'choice'
+    return state.type === 'choice' || state.type === 'multi'
       ? renderDots()
       : (($('waiting').textContent = `${state.stats.responded} answers in`), show('waiting'));
   }
 
+  if (r.kind === 'multi') return renderGrid(r);
   if (r.kind === 'choice') return renderBars(r);
 
   if (r.kind === 'word') {
@@ -206,11 +343,38 @@ function render() {
   renderWall(r);
 }
 
-const src = new EventSource(`/api/stream?code=${CODE}`);
-src.addEventListener('state', (e) => {
-  state = JSON.parse(e.data);
-  render();
-});
+// Same reasoning as the student page: a missing room 404s the stream, which
+// EventSource treats as fatal. The projector must come back on its own - it is
+// on a wall, and nobody is going to notice it has quietly stopped updating.
+let src = null;
+let retryMs = 1000;
+
+function connect() {
+  if (src) src.close();
+  src = new EventSource(`/api/stream?code=${CODE}`);
+
+  src.addEventListener('open', () => {
+    retryMs = 1000;
+  });
+
+  src.addEventListener('state', (e) => {
+    state = JSON.parse(e.data);
+    render();
+  });
+
+  src.onerror = () => {
+    if (!state) {
+      $('waiting').textContent = 'Waiting for the teacher to open the room…';
+      show('waiting');
+    }
+    if (src.readyState === EventSource.CLOSED) {
+      setTimeout(connect, retryMs);
+      retryMs = Math.min(retryMs * 2, 15000);
+    }
+  };
+}
+
+connect();
 
 let resizeTimer;
 addEventListener('resize', () => {

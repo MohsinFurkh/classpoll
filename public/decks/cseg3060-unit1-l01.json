@@ -1,0 +1,174 @@
+{
+  "title": "CSEG3060 · Unit I · L01 — Understanding the Research Problem",
+  "questions": [
+    {
+      "slot": "Poll 1",
+      "label": "Why did a 90%-accurate model fail?",
+      "type": "choice",
+      "question": "Why did a 90%-accurate model fail in the field? Choose the single best explanation — you must commit.",
+      "options": [
+        "The model was overfitted — more training data would have fixed it.",
+        "Bad engineering — slow internet and poor cameras are implementation issues.",
+        "The problem was 'classify a clean image', not 'screen patients in a clinic'.",
+        "The nurses were not trained properly — human factors, not research."
+      ],
+      "correct": 2,
+      "liveResults": false
+    },
+    {
+      "slot": "TPS 1",
+      "label": "Sort these six — task, project or research problem",
+      "type": "multi",
+      "question": "Label each one: T (task), P (project) or R (research problem).",
+      "liveResults": false,
+      "parts": [
+        {
+          "label": "1",
+          "prompt": "Add dark mode to your college fest website.",
+          "type": "choice",
+          "options": ["T — task", "P — project", "R — research problem"],
+          "correct": 0
+        },
+        {
+          "label": "2",
+          "prompt": "Build a full attendance-management system with face recognition.",
+          "type": "choice",
+          "options": ["T — task", "P — project", "R — research problem"],
+          "correct": 1
+        },
+        {
+          "label": "3",
+          "prompt": "Fine-tune BERT on an Indian legal corpus and report F1.",
+          "type": "choice",
+          "options": ["T — task", "P — project", "R — research problem"],
+          "correct": 1
+        },
+        {
+          "label": "4",
+          "prompt": "Determine whether attention pruning degrades accuracy more on code-mixed Hindi–English text than on English.",
+          "type": "choice",
+          "options": ["T — task", "P — project", "R — research problem"],
+          "correct": 2
+        },
+        {
+          "label": "5",
+          "prompt": "Migrate the department database from MySQL to PostgreSQL.",
+          "type": "choice",
+          "options": ["T — task", "P — project", "R — research problem"],
+          "correct": 0
+        },
+        {
+          "label": "6",
+          "prompt": "Measure whether GitHub Copilot changes the defect density of code written by first-year students.",
+          "type": "choice",
+          "options": ["T — task", "P — project", "R — research problem"],
+          "correct": 2
+        }
+      ]
+    },
+    {
+      "slot": "Quiz",
+      "label": "Four questions — write your answers before any reveal",
+      "type": "multi",
+      "question": "Answer all four. Commit before we reveal anything.",
+      "liveResults": false,
+      "parts": [
+        {
+          "label": "Q1",
+          "prompt": "'Application of blockchain in healthcare.' This is:",
+          "type": "choice",
+          "options": [
+            "A research problem",
+            "A topic",
+            "A hypothesis",
+            "A methodology"
+          ],
+          "correct": 1
+        },
+        {
+          "label": "Q2",
+          "prompt": "Which single addition most reliably turns a project into a research problem?",
+          "type": "choice",
+          "options": [
+            "A bigger dataset",
+            "A deeper model",
+            "A baseline to compare against",
+            "A nicer UI"
+          ],
+          "correct": 2
+        },
+        {
+          "label": "Q3",
+          "prompt": "Your experiment shows your proposed method is worse than the baseline. This is:",
+          "type": "choice",
+          "options": [
+            "A failed project",
+            "A result worth reporting",
+            "Proof the idea was bad",
+            "A reason to change the metric"
+          ],
+          "correct": 1
+        },
+        {
+          "label": "Q4",
+          "prompt": "'Our system is better.' The first thing a reviewer will ask is:",
+          "type": "choice",
+          "options": [
+            "Which language did you use?",
+            "Better than what, measured how?",
+            "Is the code open?",
+            "How long did it take?"
+          ],
+          "correct": 1
+        }
+      ]
+    },
+    {
+      "slot": "Defects",
+      "label": "Spot the mistake — name the defect in each of the four",
+      "type": "multi",
+      "question": "Each statement has one dominant defect. Name it in three words or fewer.",
+      "liveResults": true,
+      "parts": [
+        {
+          "label": "S1",
+          "prompt": "'To study the applications of artificial intelligence in agriculture.'",
+          "type": "text"
+        },
+        {
+          "label": "S2",
+          "prompt": "'To build a website that predicts stock prices accurately using LSTM.'",
+          "type": "text"
+        },
+        {
+          "label": "S3",
+          "prompt": "'To develop a novel deep-learning model that achieves the highest accuracy for brain-tumour detection.'",
+          "type": "text"
+        },
+        {
+          "label": "S4",
+          "prompt": "'To completely solve the problem of fake news on social media using NLP.'",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "slot": "Your turn",
+      "label": "Rewrite your own problem in one sentence",
+      "type": "text",
+      "question": "Fill the frame and send one sentence: 'Does ___ improve ___ over ___, under ___?'",
+      "options": [],
+      "correct": null,
+      "liveResults": false
+    },
+    {
+      "slot": "Reflect",
+      "label": "One word: what surprised you most?",
+      "type": "word",
+      "question": "In one word: what surprised you most this hour?",
+      "options": [],
+      "correct": null,
+      "liveResults": true
+    }
+  ]
+}
